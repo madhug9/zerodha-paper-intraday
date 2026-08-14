@@ -4,3 +4,4 @@ numpy>=1.26.0
 yfinance>=0.2.40
 python-dotenv>=1.0.1
 rich>=13.7.0
+streamlit>=1.32.0

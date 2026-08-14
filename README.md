@@ -10,36 +10,37 @@ Paper-trade **NSE equities / ETFs** with an Opening Range Breakout (ORB) strateg
 - Optional re-entries (multiple entry/exit per day)
 - Applies approx. Zerodha MIS costs + slippage
 - Daily loss halt + forced square-off
-
-Default watchlist (edit `config.yaml`): `VEDL`, `TATASTEEL`, `TATAMOTORS`, `SBIN`, `ADANIENT`, `SILVERBEES`, `GOLDBEES`, `BANKBEES`
+- **Web UI** to type symbols and run backtests
 
 ## Setup
 
 ```powershell
-cd "$env:USERPROFILE\Projects\zerodha-paper-intraday"
+cd "C:\Users\G Bhuvan\Documents\GitHub\zerodha-paper-intraday"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Run paper session
+## Web UI
 
 ```powershell
-python main.py --days 3
-python main.py --symbols VEDL,SBIN,SILVERBEES --days 5
+streamlit run app.py
 ```
 
-Trade logs land in `logs/paper_*.csv`.
+Enter symbols like `CUPID` or `SBIN,VEDL`, set lookback / capital, click **Run backtest**.
+
+## CLI
+
+```powershell
+python main.py --symbols CUPID --lookback 59 --quiet
+python main.py --symbols VEDL,SBIN --lookback 30
+```
+
+Trade logs land in `logs/backtest_*.csv`.
 
 ## Notes
 
 - This is **simulation**, not Zerodha’s official paper API.
-- Yahoo data can miss some ETFs or delay — skip empty symbols.
+- Yahoo 5m history is limited (~59 days).
 - Charges mirror [Zerodha brokerage calculator](https://zerodha.com/brokerage-calculator/#tab-equities) (approximate).
 - Not investment advice. For learning automation only.
-
-## Next
-
-- Hook Kite WebSocket ticks for live **paper** fills (still no real orders)
-- Add short side / VWAP strategy
-- Live MIS only after paper stats look acceptable
