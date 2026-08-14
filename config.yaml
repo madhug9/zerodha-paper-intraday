@@ -1,0 +1,44 @@
+mode: paper  # paper only for now
+
+capital: 200000
+risk_per_trade_pct: 0.5
+max_daily_loss_pct: 1.5
+max_trades_per_day: 8
+max_open_positions: 1
+square_off_time: "15:15"
+
+# Prefer liquid high-vol names; symbols are NSE cash (yfinance uses .NS)
+watchlist:
+  - VEDL
+  - TATASTEEL
+  - SBIN
+  - ADANIENT
+  - HINDALCO
+  - SILVERBEES
+  - GOLDBEES
+  - BANKBEES
+
+strategy:
+  name: orb
+  opening_range_minutes: 15
+  target_r: 1.5          # take profit at 1.5R
+  stop_buffer_pct: 0.05  # cushion beyond OR high/low
+  min_or_range_pct: 0.35 # skip sleepy opens
+  allow_reentry: true
+  max_entries_per_symbol: 3
+
+costs:
+  # Zerodha equity intraday (MIS) approximation — see brokerage calculator
+  brokerage_rate: 0.0003
+  brokerage_cap: 20.0
+  stt_sell: 0.00025
+  exchange_txn: 0.0000297
+  sebi: 0.0000001
+  stamp_buy: 0.00003
+  gst: 0.18
+  slippage_bps: 2        # 0.02% simulated slippage each side
+
+data:
+  interval: 5m
+  lookback_days: 5
+  exchange_suffix: .NS
