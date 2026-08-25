@@ -1,4 +1,4 @@
-"""Streamlit UI — backtest NSE symbols you type in."""
+"""Streamlit UI — backtest NSE symbols with GainzAlgo V2 Alpha or ORB."""
 
 from __future__ import annotations
 
@@ -9,22 +9,49 @@ import streamlit as st
 
 from src.backtest import load_config, parse_symbols, run_backtest
 
-st.set_page_config(page_title="NSE Paper Backtest", page_icon="📈", layout="wide")
+st.set_page_config(page_title="GainzAlgo V2 Alpha", page_icon="📈", layout="wide")
 
 cfg = load_config()
+strat_cfg = cfg.get("strategy", {})
 
-st.title("NSE ORB paper backtest")
-st.caption("Type NSE symbols (e.g. CUPID, SBIN, SILVERBEES). Simulation only — not live trading / not advice.")
+st.title("GainzAlgo V2 Alpha paper backtest")
+st.caption(
+    "Independent recreation of the published Alpha signal rules for NSE paper trading. "
+    "Simulation only — not the official TradingView product, not live trading, not advice."
+)
 
 with st.sidebar:
     st.header("Parameters")
     default_syms = "CUPID"
+    strategy = st.selectbox(
+        "Strategy",
+        ["gainzalgo", "orb"],
+        index=0,
+        format_func=lambda s: "GainzAlgo V2 Alpha" if s == "gainzalgo" else "Opening Range Breakout",
+    )
     lookback = st.slider("Lookback days (5m data max ~59)", 5, 59, 59)
-    capital = st.number_input("Capital (Rs)", min_value=10_000, max_value=10_000_000, value=int(cfg.get("capital", 200000)), step=10_000)
-    or_mins = st.slider("Opening range (minutes)", 5, 60, int(cfg.get("strategy", {}).get("opening_range_minutes", 15)))
-    target_r = st.slider("Target (R)", 0.5, 3.0, float(cfg.get("strategy", {}).get("target_r", 1.5)), 0.1)
+    capital = st.number_input(
+        "Capital (Rs)",
+        min_value=10_000,
+        max_value=10_000_000,
+        value=int(cfg.get("capital", 200000)),
+        step=10_000,
+    )
+    if strategy == "gainzalgo":
+        rrr = st.selectbox("Risk : Reward", ["1:1", "2:3", "1:2", "1:4"], index=2)
+        tp_sl_multi = st.slider("TP/SL multiplier", 1.0, 4.0, float(strat_cfg.get("tp_sl_multiplier", 1.0)), 0.1)
+        allow_shorts = st.checkbox("Allow shorts", value=bool(strat_cfg.get("allow_shorts", True)))
+        or_mins = int(strat_cfg.get("opening_range_minutes", 15))
+        target_r = float(strat_cfg.get("target_r", 1.5))
+    else:
+        rrr = None
+        tp_sl_multi = None
+        allow_shorts = None
+        or_mins = st.slider("Opening range (minutes)", 5, 60, int(strat_cfg.get("opening_range_minutes", 15)))
+        target_r = st.slider("Target (R)", 0.5, 3.0, float(strat_cfg.get("target_r", 1.5)), 0.1)
     st.markdown("---")
     st.markdown("Uses Zerodha-style MIS cost model from `config.yaml`.")
+    st.markdown("Signals confirm on **bar close**; entries fill at the **next bar open**.")
 
 symbols_text = st.text_input(
     "Symbols",
@@ -51,8 +78,12 @@ if run:
                     cfg,
                     lookback_days=lookback,
                     capital=float(capital),
+                    strategy=strategy,
                     opening_range_minutes=or_mins,
                     target_r=float(target_r),
+                    rrr=rrr,
+                    tp_sl_multiplier=tp_sl_multi,
+                    allow_shorts=allow_shorts,
                     write_log=True,
                 )
             except Exception as exc:  # noqa: BLE001 — show in UI
@@ -71,6 +102,7 @@ if run:
         m5.metric("Ending cash", f"Rs {result.ending_cash:,.0f}")
 
         st.write(
+            f"**Strategy:** {result.strategy}  ·  "
             f"**Symbols:** {', '.join(result.symbols)}  ·  "
             f"**Sessions:** {result.sessions}  ·  "
             f"**Range:** {result.date_start} → {result.date_end}  ·  "
@@ -81,7 +113,7 @@ if run:
 
         left, right = st.columns(2)
         with left:
-            st.subheader("Trade P&L")
+            st.subheader("Equity (trade P&L)")
             if result.trade_pnls:
                 pnl_df = pd.DataFrame({"trade": range(1, len(result.trade_pnls) + 1), "pnl": result.trade_pnls})
                 pnl_df["equity"] = float(capital) + pnl_df["pnl"].cumsum()
@@ -95,6 +127,10 @@ if run:
                 st.bar_chart(bar_df, height=280)
             else:
                 st.info("No trades to chart.")
+
+        if result.signals:
+            st.subheader("Signals (bar-close)")
+            st.dataframe(pd.DataFrame(result.signals), use_container_width=True, hide_index=True)
 
         st.subheader("Fills")
         if result.fills:

@@ -1,13 +1,21 @@
-# Zerodha Paper Intraday
+# GainzAlgo V2 Alpha paper backtest
 
-Paper-trade **NSE equities / ETFs** with an Opening Range Breakout (ORB) strategy, Zerodha-like charges, and multi-entry risk controls. No live orders are placed.
+Paper-trade **NSE equities / ETFs** with a **GainzAlgo V2 Alpha** signal engine (independent recreation of the published rules), optional Opening Range Breakout (ORB), Zerodha-like charges, and multi-entry risk controls. No live orders are placed.
+
+This is **not** the official TradingView indicator and is **not affiliated** with GainzAlgo.
 
 ## What it does
 
 - Replays recent intraday bars (Yahoo Finance `.NS`)
-- Builds a 15-minute opening range
-- Long breakout + stop at OR low, target at 1.5R
-- Optional re-entries (multiple entry/exit per day)
+- **GainzAlgo V2 Alpha** (default): bar-close buy/sell signals from
+  - simplified bullish/bearish engulfing
+  - candle body vs true range (stability)
+  - RSI(14) filter
+  - 10-bar close delta
+  - ATR(14) take-profit / stop-loss at a chosen RRR
+- Optional **ORB**: 15-minute opening range, long breakout, 1.5R target
+- Entries fill at the **next bar open** after a confirmed close
+- Long and short (GainzAlgo); ORB remains long-only
 - Applies approx. Zerodha MIS costs + slippage
 - Daily loss halt + forced square-off
 - **Web UI** to type symbols and run backtests
@@ -27,16 +35,23 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Enter symbols like `CUPID` or `SBIN,VEDL`, set lookback / capital, click **Run backtest**.
+Enter symbols like `CUPID` or `SBIN,VEDL`, pick GainzAlgo V2 Alpha or ORB, set lookback / capital, click **Run backtest**.
 
 ## CLI
 
 ```powershell
 python main.py --symbols CUPID --lookback 59 --quiet
-python main.py --symbols VEDL,SBIN --lookback 30
+python main.py --symbols VEDL,SBIN --lookback 30 --strategy gainzalgo --rrr 1:2
+python main.py --symbols SBIN --lookback 30 --strategy orb
 ```
 
 Trade logs land in `logs/backtest_*.csv`.
+
+## Tests
+
+```powershell
+python -m pytest -q
+```
 
 ## Notes
 
