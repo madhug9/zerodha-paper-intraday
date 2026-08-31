@@ -99,18 +99,32 @@ def _fills_to_rows(fills: list[Fill]) -> list[dict[str, Any]]:
 
 
 def _pair_round_trips(fills: list[Fill]) -> tuple[list[float], dict[str, int]]:
+    """Pair opens/closes for long (BUY→SELL) and short (SELL→BUY) round trips."""
     open_stack: list[Fill] = []
     round_trips: list[float] = []
     exit_reasons: dict[str, int] = {}
+    exit_reasons_tags = {"stop", "target", "square_off", "max_daily_loss", "eod_force"}
+
     for fill in fills:
-        if fill.side == "BUY":
+        is_exit = fill.reason in exit_reasons_tags
+        if not is_exit:
             open_stack.append(fill)
-        elif fill.side == "SELL" and open_stack:
-            entry = open_stack.pop()
-            qty = min(entry.qty, fill.qty)
+            continue
+        if not open_stack:
+            continue
+        entry = open_stack.pop()
+        qty = min(entry.qty, fill.qty)
+        if entry.side == "BUY" and fill.side == "SELL":
+            # Long: buy then sell
             pnl = (fill.price - entry.price) * qty - entry.charges - fill.charges
-            round_trips.append(pnl)
-            exit_reasons[fill.reason] = exit_reasons.get(fill.reason, 0) + 1
+        elif entry.side == "SELL" and fill.side == "BUY":
+            # Short: sell then buy
+            pnl = (entry.price - fill.price) * qty - entry.charges - fill.charges
+        else:
+            # Fallback if pairing mismatched
+            pnl = -entry.charges - fill.charges
+        round_trips.append(pnl)
+        exit_reasons[fill.reason] = exit_reasons.get(fill.reason, 0) + 1
     return round_trips, exit_reasons
 
 
@@ -123,6 +137,7 @@ def run_backtest(
     capital: float | None = None,
     opening_range_minutes: int | None = None,
     target_r: float | None = None,
+    trade_mode: str | None = None,
     write_log: bool = True,
 ) -> BacktestResult:
     cfg = cfg or load_config()
@@ -140,6 +155,12 @@ def run_backtest(
         strat["opening_range_minutes"] = opening_range_minutes
     if target_r is not None:
         strat["target_r"] = target_r
+    if trade_mode is not None:
+        strat["trade_mode"] = trade_mode
+
+    mode = str(strat.get("trade_mode", "both"))
+    if mode not in ("both", "long_only", "short_only"):
+        mode = "both"
 
     orb = OrbConfig(
         opening_range_minutes=int(strat.get("opening_range_minutes", 15)),
@@ -148,6 +169,7 @@ def run_backtest(
         min_or_range_pct=float(strat.get("min_or_range_pct", 0.35)),
         allow_reentry=bool(strat.get("allow_reentry", True)),
         max_entries_per_symbol=int(strat.get("max_entries_per_symbol", 3)),
+        trade_mode=mode,  # type: ignore[arg-type]
     )
 
     start_capital = float(capital if capital is not None else cfg["capital"])

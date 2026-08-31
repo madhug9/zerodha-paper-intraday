@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--symbols", help="Comma-separated NSE symbols override")
     parser.add_argument("--days", type=int, default=None, help="How many recent sessions to replay (default: all fetched)")
     parser.add_argument("--lookback", type=int, default=None, help="Yahoo lookback days for intraday bars (max ~59 for 5m)")
+    parser.add_argument("--mode", choices=["both", "long_only", "short_only"], default=None, help="Long buy→sell, short sell→buy, or both")
     parser.add_argument("--quiet", action="store_true", help="Summary only (kept for compatibility)")
     args = parser.parse_args()
 
@@ -35,6 +36,7 @@ def main() -> None:
         cfg,
         lookback_days=args.lookback,
         days=args.days,
+        trade_mode=args.mode,
         write_log=True,
     )
 

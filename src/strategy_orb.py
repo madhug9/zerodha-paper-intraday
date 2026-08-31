@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
 from .paper_broker import PaperBroker
+
+TradeMode = Literal["both", "long_only", "short_only"]
 
 
 @dataclass
@@ -17,6 +19,7 @@ class OrbConfig:
     min_or_range_pct: float = 0.35
     allow_reentry: bool = True
     max_entries_per_symbol: int = 3
+    trade_mode: TradeMode = "both"  # long buy→sell, short sell→buy, or both
 
 
 @dataclass
@@ -30,7 +33,7 @@ class RiskConfig:
 
 
 class OrbEngine:
-    """Opening-range breakout with optional re-entries (long-only paper)."""
+    """Opening-range breakout with long and/or short entries (paper)."""
 
     def __init__(self, orb: OrbConfig, risk: RiskConfig, broker: PaperBroker):
         self.orb = orb
@@ -41,8 +44,7 @@ class OrbEngine:
         self.halted = False
         self._or: dict[str, tuple[float, float]] = {}
         self._entries: dict[str, int] = {}
-        self._broke_up: set[str] = set()
-        self._armed: dict[str, bool] = {}  # must pull back before next entry
+        self._armed: dict[str, bool] = {}
 
     def reset_day(self, equity: float) -> None:
         self.trades_today = 0
@@ -50,7 +52,6 @@ class OrbEngine:
         self.halted = False
         self._or.clear()
         self._entries.clear()
-        self._broke_up.clear()
         self._armed.clear()
 
     def _position_size(self, entry: float, stop: float) -> int:
@@ -66,6 +67,45 @@ class OrbEngine:
         eq = self.broker.equity(marks)
         loss_pct = (self.day_start_equity - eq) / self.day_start_equity * 100.0
         return loss_pct >= self.risk.max_daily_loss_pct
+
+    def _manage_open(self, symbol: str, row: Any, ts: datetime, or_high: float, or_low: float) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        pos = self.broker.positions.get(symbol)
+        if not pos:
+            return events
+
+        high = float(row["high"])
+        low = float(row["low"])
+
+        if pos.side == "BUY":
+            # Long: stop below, target above
+            if low <= pos.stop:
+                fill = self.broker.flat(symbol, pos.stop, ts, "stop")
+                if fill:
+                    events.append({"event": "exit", "fill": fill})
+                    self._armed[symbol] = False
+                return events
+            if high >= pos.target:
+                fill = self.broker.flat(symbol, pos.target, ts, "target")
+                if fill:
+                    events.append({"event": "exit", "fill": fill})
+                    self._armed[symbol] = False
+                return events
+        else:
+            # Short: stop above, target below
+            if high >= pos.stop:
+                fill = self.broker.flat(symbol, pos.stop, ts, "stop")
+                if fill:
+                    events.append({"event": "exit", "fill": fill})
+                    self._armed[symbol] = False
+                return events
+            if low <= pos.target:
+                fill = self.broker.flat(symbol, pos.target, ts, "target")
+                if fill:
+                    events.append({"event": "exit", "fill": fill})
+                    self._armed[symbol] = False
+                return events
+        return events
 
     def on_bar(self, symbol: str, bars: pd.DataFrame, i: int) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
@@ -90,7 +130,6 @@ class OrbEngine:
                     events.append({"event": "exit", "fill": fill})
             return events
 
-        # Build opening range from first N minutes of session
         session_open = bars.index[0]
         or_end = session_open + pd.Timedelta(minutes=self.orb.opening_range_minutes)
         if symbol not in self._or:
@@ -104,7 +143,7 @@ class OrbEngine:
             mid = (or_high + or_low) / 2.0
             rng_pct = (or_high - or_low) / mid * 100.0 if mid else 0.0
             if rng_pct < self.orb.min_or_range_pct:
-                self._or[symbol] = (or_high, or_low)  # mark but skip trading
+                self._or[symbol] = (or_high, or_low)
                 return events
             self._or[symbol] = (or_high, or_low)
             self._armed[symbol] = True
@@ -114,26 +153,13 @@ class OrbEngine:
         if or_high <= or_low:
             return events
 
-        # Manage open position
-        pos = self.broker.positions.get(symbol)
-        if pos:
-            if float(row["low"]) <= pos.stop:
-                fill = self.broker.flat(symbol, pos.stop, ts, "stop")
-                if fill:
-                    events.append({"event": "exit", "fill": fill})
-                    self._armed[symbol] = False  # wait for pullback before re-entry
-                return events
-            if float(row["high"]) >= pos.target:
-                fill = self.broker.flat(symbol, pos.target, ts, "target")
-                if fill:
-                    events.append({"event": "exit", "fill": fill})
-                    self._armed[symbol] = False
-                return events
-            return events
+        if symbol in self.broker.positions:
+            return self._manage_open(symbol, row, ts, or_high, or_low)
 
-        # Re-arm only after a pullback back into the opening range
+        # Re-arm after exit: price must return inside the opening range
         if not self._armed.get(symbol, True):
-            if float(row["close"]) < or_high:
+            close = float(row["close"])
+            if or_low < close < or_high:
                 self._armed[symbol] = True
             else:
                 return events
@@ -151,21 +177,49 @@ class OrbEngine:
         if entries > 0 and not self.orb.allow_reentry:
             return events
 
-        # Long breakout above OR high
-        if float(row["high"]) > or_high:
-            self._broke_up.add(symbol)
+        mode = self.orb.trade_mode
+        allow_long = mode in ("both", "long_only")
+        allow_short = mode in ("both", "short_only")
+
+        high = float(row["high"])
+        low = float(row["low"])
+
+        # Prefer the side that breaks first in this bar; if both, use close bias
+        long_signal = allow_long and high > or_high
+        short_signal = allow_short and low < or_low
+        if long_signal and short_signal:
+            close = float(row["close"])
+            if close >= (or_high + or_low) / 2.0:
+                short_signal = False
+            else:
+                long_signal = False
+
+        if long_signal:
             entry = or_high
             stop = or_low * (1.0 - self.orb.stop_buffer_pct / 100.0)
             risk = entry - stop
-            if risk <= 0:
-                return events
-            target = entry + risk * self.orb.target_r
-            qty = self._position_size(entry, stop)
-            if qty <= 0:
-                return events
-            fill = self.broker.buy(symbol, qty, entry, ts, stop, target, "orb_breakout")
-            if fill:
-                self.trades_today += 1
-                self._entries[symbol] = entries + 1
-                events.append({"event": "entry", "fill": fill, "stop": stop, "target": target})
+            if risk > 0:
+                target = entry + risk * self.orb.target_r
+                qty = self._position_size(entry, stop)
+                if qty > 0:
+                    fill = self.broker.open_long(symbol, qty, entry, ts, stop, target, "orb_long")
+                    if fill:
+                        self.trades_today += 1
+                        self._entries[symbol] = entries + 1
+                        events.append({"event": "entry", "fill": fill, "stop": stop, "target": target})
+            return events
+
+        if short_signal:
+            entry = or_low
+            stop = or_high * (1.0 + self.orb.stop_buffer_pct / 100.0)
+            risk = stop - entry
+            if risk > 0:
+                target = entry - risk * self.orb.target_r
+                qty = self._position_size(entry, stop)
+                if qty > 0:
+                    fill = self.broker.open_short(symbol, qty, entry, ts, stop, target, "orb_short")
+                    if fill:
+                        self.trades_today += 1
+                        self._entries[symbol] = entries + 1
+                        events.append({"event": "entry", "fill": fill, "stop": stop, "target": target})
         return events

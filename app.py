@@ -14,7 +14,9 @@ st.set_page_config(page_title="NSE Paper Backtest", page_icon="📈", layout="wi
 cfg = load_config()
 
 st.title("NSE ORB paper backtest")
-st.caption("Type NSE symbols (e.g. CUPID, SBIN, SILVERBEES). Simulation only — not live trading / not advice.")
+st.caption(
+    "Intraday long (buy→sell) and/or short (sell→buy). Type NSE symbols. Simulation only — not advice."
+)
 
 with st.sidebar:
     st.header("Parameters")
@@ -23,6 +25,20 @@ with st.sidebar:
     capital = st.number_input("Capital (Rs)", min_value=10_000, max_value=10_000_000, value=int(cfg.get("capital", 200000)), step=10_000)
     or_mins = st.slider("Opening range (minutes)", 5, 60, int(cfg.get("strategy", {}).get("opening_range_minutes", 15)))
     target_r = st.slider("Target (R)", 0.5, 3.0, float(cfg.get("strategy", {}).get("target_r", 1.5)), 0.1)
+    mode_label = st.selectbox(
+        "Direction",
+        options=[
+            "Both (buy→sell & sell→buy)",
+            "Long only (buy→sell)",
+            "Short only (sell→buy)",
+        ],
+        index=0,
+    )
+    trade_mode = {
+        "Both (buy→sell & sell→buy)": "both",
+        "Long only (buy→sell)": "long_only",
+        "Short only (sell→buy)": "short_only",
+    }[mode_label]
     st.markdown("---")
     st.markdown("Uses Zerodha-style MIS cost model from `config.yaml`.")
 
@@ -53,6 +69,7 @@ if run:
                     capital=float(capital),
                     opening_range_minutes=or_mins,
                     target_r=float(target_r),
+                    trade_mode=trade_mode,
                     write_log=True,
                 )
             except Exception as exc:  # noqa: BLE001 — show in UI
@@ -72,6 +89,7 @@ if run:
 
         st.write(
             f"**Symbols:** {', '.join(result.symbols)}  ·  "
+            f"**Mode:** {mode_label}  ·  "
             f"**Sessions:** {result.sessions}  ·  "
             f"**Range:** {result.date_start} → {result.date_end}  ·  "
             f"**Breakeven est.:** {result.breakeven_pct * 100:.3f}% RT"

@@ -26,6 +26,8 @@ strategy:
   min_or_range_pct: 0.35 # skip sleepy opens
   allow_reentry: true
   max_entries_per_symbol: 3
+  # both = long (buy→sell) + short (sell→buy); or long_only / short_only
+  trade_mode: both
 
 costs:
   # Zerodha equity intraday (MIS) approximation — see brokerage calculator
