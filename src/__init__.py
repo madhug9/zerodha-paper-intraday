@@ -1,1 +1,1 @@
-"""Paper intraday toolkit for NSE equities/ETFs (Zerodha cost model)."""
+"""Paper / research toolkit for NSE equities and ETFs (Zerodha cost model)."""

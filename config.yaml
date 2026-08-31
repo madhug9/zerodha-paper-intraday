@@ -19,15 +19,31 @@ watchlist:
   - BANKBEES
 
 strategy:
-  name: orb
-  opening_range_minutes: 15
-  target_r: 1.5          # take profit at 1.5R
-  stop_buffer_pct: 0.05  # cushion beyond OR high/low
-  min_or_range_pct: 0.35 # skip sleepy opens
+  name: gainzalgo  # gainzalgo | orb
   allow_reentry: true
+<<<<<<< HEAD
   max_entries_per_symbol: 3
   # both = long (buy→sell) + short (sell→buy); or long_only / short_only
   trade_mode: both
+=======
+  max_entries_per_symbol: 8
+  # GainzAlgo V2 Alpha (published rules recreation)
+  rrr: "1:2"
+  tp_sl_multiplier: 1.0
+  tp_sl_precision: 2
+  disable_repeating_signals: true
+  candle_stability_index: 0.7
+  rsi_length: 14
+  rsi_index: 80
+  atr_length: 14
+  candle_delta_length: 10
+  allow_shorts: true
+  # Opening Range Breakout (used when name: orb)
+  opening_range_minutes: 15
+  target_r: 1.5
+  stop_buffer_pct: 0.05
+  min_or_range_pct: 0.35
+>>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
 
 costs:
   # Zerodha equity intraday (MIS) approximation — see brokerage calculator

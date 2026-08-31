@@ -1,4 +1,4 @@
-"""Shared ORB backtest runner used by CLI and web UI."""
+"""Shared backtest runner used by CLI and web UI."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import yaml
 from .costs import CostConfig, round_trip_breakeven_pct
 from .data import DataConfig, day_slice, fetch_intraday, session_days
 from .paper_broker import Fill, PaperBroker
+from .strategy_gainzalgo import GainzAlgoConfig, GainzAlgoEngine
 from .strategy_orb import OrbConfig, OrbEngine, RiskConfig
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,10 +58,13 @@ class BacktestResult:
     skipped: list[str]
     date_start: str | None
     date_end: str | None
+    strategy: str = "gainzalgo"
+    signals: list[dict[str, Any]] | None = None
     log_path: str | None = None
 
     def to_summary_dict(self) -> dict[str, Any]:
         return {
+            "strategy": self.strategy,
             "symbols": ", ".join(self.symbols),
             "sessions": self.sessions,
             "capital": self.capital,
@@ -99,13 +103,18 @@ def _fills_to_rows(fills: list[Fill]) -> list[dict[str, Any]]:
 
 
 def _pair_round_trips(fills: list[Fill]) -> tuple[list[float], dict[str, int]]:
+<<<<<<< HEAD
     """Pair opens/closes for long (BUY→SELL) and short (SELL→BUY) round trips."""
+=======
+    """Pair FIFO long (BUY then SELL) and short (SELL then BUY) round trips."""
+>>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
     open_stack: list[Fill] = []
     round_trips: list[float] = []
     exit_reasons: dict[str, int] = {}
     exit_reasons_tags = {"stop", "target", "square_off", "max_daily_loss", "eod_force"}
 
     for fill in fills:
+<<<<<<< HEAD
         is_exit = fill.reason in exit_reasons_tags
         if not is_exit:
             open_stack.append(fill)
@@ -123,9 +132,74 @@ def _pair_round_trips(fills: list[Fill]) -> tuple[list[float], dict[str, int]]:
         else:
             # Fallback if pairing mismatched
             pnl = -entry.charges - fill.charges
+=======
+        if not open_stack:
+            open_stack.append(fill)
+            continue
+        entry = open_stack[-1]
+        is_exit = (entry.side == "BUY" and fill.side == "SELL") or (entry.side == "SELL" and fill.side == "BUY")
+        if not is_exit:
+            open_stack.append(fill)
+            continue
+        open_stack.pop()
+        qty = min(entry.qty, fill.qty)
+        if entry.side == "BUY":
+            pnl = (fill.price - entry.price) * qty - entry.charges - fill.charges
+        else:
+            pnl = (entry.price - fill.price) * qty - entry.charges - fill.charges
+>>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
         round_trips.append(pnl)
         exit_reasons[fill.reason] = exit_reasons.get(fill.reason, 0) + 1
     return round_trips, exit_reasons
+
+
+def _gainzalgo_config(strat: dict[str, Any]) -> GainzAlgoConfig:
+    return GainzAlgoConfig(
+        rsi_length=int(strat.get("rsi_length", 14)),
+        atr_length=int(strat.get("atr_length", 14)),
+        candle_stability_index=float(strat.get("candle_stability_index", 0.7)),
+        rsi_index=float(strat.get("rsi_index", 80)),
+        candle_delta_length=int(strat.get("candle_delta_length", 10)),
+        disable_repeating_signals=bool(strat.get("disable_repeating_signals", True)),
+        rrr=str(strat.get("rrr", "1:2")),
+        tp_sl_multiplier=float(strat.get("tp_sl_multiplier", 1.0)),
+        tp_sl_precision=int(strat.get("tp_sl_precision", 2)),
+        allow_shorts=bool(strat.get("allow_shorts", True)),
+        allow_reentry=bool(strat.get("allow_reentry", True)),
+        max_entries_per_symbol=int(strat.get("max_entries_per_symbol", 8)),
+    )
+
+
+def _orb_config(strat: dict[str, Any]) -> OrbConfig:
+    return OrbConfig(
+        opening_range_minutes=int(strat.get("opening_range_minutes", 15)),
+        target_r=float(strat.get("target_r", 1.5)),
+        stop_buffer_pct=float(strat.get("stop_buffer_pct", 0.05)),
+        min_or_range_pct=float(strat.get("min_or_range_pct", 0.35)),
+        allow_reentry=bool(strat.get("allow_reentry", True)),
+        max_entries_per_symbol=int(strat.get("max_entries_per_symbol", 3)),
+    )
+
+
+def _signal_rows(prepared: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for symbol, df in prepared.items():
+        hits = df[df["signal"].notna()]
+        for ts, row in hits.iterrows():
+            rows.append(
+                {
+                    "time": ts.isoformat(sep=" ", timespec="minutes") if hasattr(ts, "isoformat") else str(ts),
+                    "symbol": symbol,
+                    "signal": row["signal"],
+                    "close": round(float(row["close"]), 4),
+                    "tp": round(float(row["tp"]), 4),
+                    "sl": round(float(row["sl"]), 4),
+                    "rsi": round(float(row["rsi"]), 2) if pd.notna(row["rsi"]) else None,
+                    "atr": round(float(row["atr"]), 4) if pd.notna(row["atr"]) else None,
+                }
+            )
+    rows.sort(key=lambda r: (r["time"], r["symbol"]))
+    return rows
 
 
 def run_backtest(
@@ -135,10 +209,18 @@ def run_backtest(
     lookback_days: int | None = None,
     days: int | None = None,
     capital: float | None = None,
+    strategy: str | None = None,
     opening_range_minutes: int | None = None,
     target_r: float | None = None,
+<<<<<<< HEAD
     trade_mode: str | None = None,
+=======
+    rrr: str | None = None,
+    tp_sl_multiplier: float | None = None,
+    allow_shorts: bool | None = None,
+>>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
     write_log: bool = True,
+    frames: dict[str, pd.DataFrame] | None = None,
 ) -> BacktestResult:
     cfg = cfg or load_config()
     symbols = [s.strip().upper() for s in symbols if s and s.strip()]
@@ -155,6 +237,7 @@ def run_backtest(
         strat["opening_range_minutes"] = opening_range_minutes
     if target_r is not None:
         strat["target_r"] = target_r
+<<<<<<< HEAD
     if trade_mode is not None:
         strat["trade_mode"] = trade_mode
 
@@ -171,6 +254,18 @@ def run_backtest(
         max_entries_per_symbol=int(strat.get("max_entries_per_symbol", 3)),
         trade_mode=mode,  # type: ignore[arg-type]
     )
+=======
+    if rrr is not None:
+        strat["rrr"] = rrr
+    if tp_sl_multiplier is not None:
+        strat["tp_sl_multiplier"] = tp_sl_multiplier
+    if allow_shorts is not None:
+        strat["allow_shorts"] = allow_shorts
+
+    name = (strategy or strat.get("name") or "gainzalgo").strip().lower()
+    if name not in {"gainzalgo", "orb"}:
+        raise ValueError("strategy must be 'gainzalgo' or 'orb'")
+>>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
 
     start_capital = float(capital if capital is not None else cfg["capital"])
     risk = RiskConfig(
@@ -183,22 +278,39 @@ def run_backtest(
     )
 
     broker = PaperBroker(capital=risk.capital, costs=costs)
-    engine = OrbEngine(orb, risk, broker)
+    engine: GainzAlgoEngine | OrbEngine
+    if name == "orb":
+        engine = OrbEngine(_orb_config(strat), risk, broker)
+    else:
+        engine = GainzAlgoEngine(_gainzalgo_config(strat), risk, broker)
 
-    frames: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
-    for sym in symbols:
-        df = fetch_intraday(sym, data_cfg)
-        if df.empty:
-            skipped.append(sym)
-            continue
-        frames[sym] = df
+    loaded: dict[str, pd.DataFrame] = {}
+    if frames is None:
+        for sym in symbols:
+            df = fetch_intraday(sym, data_cfg)
+            if df.empty:
+                skipped.append(sym)
+                continue
+            loaded[sym] = df
+    else:
+        for sym in symbols:
+            df = frames.get(sym)
+            if df is None or df.empty:
+                skipped.append(sym)
+                continue
+            loaded[sym] = df
 
-    if not frames:
+    if not loaded:
         raise RuntimeError(f"No market data for: {', '.join(symbols)}")
 
+    prepared: dict[str, pd.DataFrame] = {}
+    if isinstance(engine, GainzAlgoEngine):
+        for sym, df in loaded.items():
+            prepared[sym] = engine.prepare(sym, df)
+
     all_days: set = set()
-    for df in frames.values():
+    for df in loaded.values():
         all_days.update(session_days(df))
     trade_days = sorted(all_days)
     if days:
@@ -209,7 +321,7 @@ def run_backtest(
 
     for day in trade_days:
         engine.reset_day(broker.equity({}))
-        for sym, df in frames.items():
+        for sym, df in loaded.items():
             bars = day_slice(df, day)
             if len(bars) < 5:
                 continue
@@ -230,13 +342,13 @@ def run_backtest(
         log_dir = ROOT / "logs"
         log_dir.mkdir(exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        sym_tag = "_".join(frames.keys())[:40]
+        sym_tag = "_".join(loaded.keys())[:40]
         path = log_dir / f"backtest_{sym_tag}_{stamp}.csv"
         pd.DataFrame(_fills_to_rows(broker.fills)).to_csv(path, index=False)
         log_path = str(path)
 
     return BacktestResult(
-        symbols=list(frames.keys()),
+        symbols=list(loaded.keys()),
         sessions=len(trade_days),
         capital=start_capital,
         ending_cash=broker.cash,
@@ -257,5 +369,7 @@ def run_backtest(
         skipped=skipped,
         date_start=date_start,
         date_end=date_end,
+        strategy=name,
+        signals=_signal_rows(prepared) if prepared else None,
         log_path=log_path,
     )
