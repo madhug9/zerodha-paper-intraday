@@ -17,7 +17,7 @@ from .indicators import atr as atr_series
 from .indicators import rsi as rsi_series
 from .indicators import true_range
 from .paper_broker import PaperBroker
-from .strategy_orb import RiskConfig
+from .strategy_orb import RiskConfig, TradeMode
 
 SignalSide = Literal["buy", "sell"]
 
@@ -50,7 +50,8 @@ class GainzAlgoConfig:
     tp_sl_precision: int = 2
     allow_shorts: bool = True
     allow_reentry: bool = True
-    max_entries_per_symbol: int = 8
+    max_entries_per_symbol: int = 3
+    trade_mode: TradeMode = "both"
 
     @property
     def reward_multiple(self) -> float:
@@ -238,6 +239,14 @@ class GainzAlgoEngine:
             events.append({"event": "exit", "fill": fill})
         return events
 
+    def _side_allowed(self, side: str) -> bool:
+        mode = self.algo.trade_mode
+        if side == "buy":
+            return mode in ("both", "long_only")
+        if side == "sell":
+            return mode in ("both", "short_only") and self.algo.allow_shorts
+        return False
+
     def _try_entry(self, symbol: str, side: SignalSide, entry: float, stop: float, target: float, ts: datetime) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         if self.halted:
@@ -253,7 +262,7 @@ class GainzAlgoEngine:
             return events
         if entries > 0 and not self.algo.allow_reentry:
             return events
-        if side == "sell" and not self.algo.allow_shorts:
+        if not self._side_allowed(side):
             return events
         if stop <= 0 or target <= 0 or entry <= 0:
             return events
@@ -314,7 +323,7 @@ class GainzAlgoEngine:
         if isinstance(sig_row, pd.DataFrame):
             sig_row = sig_row.iloc[-1]
         signal = sig_row.get("signal")
-        if signal not in ("buy", "sell"):
+        if signal not in ("buy", "sell") or not self._side_allowed(str(signal)):
             return events
         tp = float(sig_row["tp"])
         sl = float(sig_row["sl"])

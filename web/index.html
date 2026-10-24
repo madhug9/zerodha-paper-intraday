@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NSE Paper Desk</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">NSE cash · 5-minute bars · Yahoo .NS</p>
+      <h1>Paper Desk</h1>
+    </div>
+    <p class="stamp">Simulation only. Not investment advice. No live orders.</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab active" id="tab-btn-backtest" data-tab="backtest" role="tab" aria-selected="true">Backtest</button>
+    <button type="button" class="tab" id="tab-btn-analysis" data-tab="analysis" role="tab" aria-selected="false">AI Analysis</button>
+  </nav>
+
+  <main>
+    <section id="panel-backtest" role="tabpanel">
+      <form id="backtest-form" class="panel">
+        <label>Symbols
+          <input id="symbols" name="symbols" autocomplete="off" placeholder="CUPID or SBIN,VEDL" required />
+        </label>
+        <label>Strategy
+          <select id="strategy" name="strategy">
+            <option value="gainzalgo">GainzAlgo V2 Alpha</option>
+            <option value="orb">Opening Range Breakout</option>
+          </select>
+        </label>
+        <label id="rrr-field">Risk : Reward
+          <select id="rrr" name="rrr">
+            <option>1:1</option>
+            <option>2:3</option>
+            <option selected>1:2</option>
+            <option>1:4</option>
+          </select>
+        </label>
+        <label>Trade mode
+          <select id="trade-mode" name="trade_mode">
+            <option value="both">Both</option>
+            <option value="long_only">Long only</option>
+            <option value="short_only">Short only</option>
+          </select>
+        </label>
+        <label>Capital (Rs)
+          <input id="capital" name="capital" type="number" min="10000" max="10000000" step="10000" value="200000" required />
+        </label>
+        <label>Lookback (days)
+          <input id="lookback" name="lookback" type="number" min="1" max="59" value="30" required />
+        </label>
+        <label id="or-field" hidden>Opening range (min)
+          <input id="or-minutes" name="opening_range_minutes" type="number" min="5" max="60" value="15" />
+        </label>
+        <label id="target-field" hidden>Target (R)
+          <input id="target-r" name="target_r" type="number" min="0.5" max="3" step="0.1" value="1.5" />
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="run-backtest">Run backtest</button>
+          <p class="hint">NSE names only. <code>SBIN.NS</code> is accepted and stored as SBIN.</p>
+        </div>
+      </form>
+      <p id="backtest-error" class="banner error" hidden></p>
+      <p id="backtest-status" class="banner" hidden>Fetching bars and replaying the session…</p>
+      <div id="backtest-out" hidden>
+        <p id="backtest-meta" class="meta"></p>
+        <div class="metrics" id="metrics"></div>
+        <p id="exit-mix" class="meta"></p>
+        <div class="chart-head">
+          <h2>Price and trades</h2>
+          <label class="inline">Symbol
+            <select id="chart-symbol"></select>
+          </label>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="price-chart" height="280"></canvas>
+          <p id="price-empty" class="empty" hidden>No price bars in this window.</p>
+        </div>
+        <div class="legend">
+          <span><i class="swatch up"></i> Buy</span>
+          <span><i class="swatch down"></i> Sell</span>
+          <span id="chart-hover" class="hover"></span>
+        </div>
+        <h2>Equity after each round trip</h2>
+        <div class="chart-wrap short">
+          <canvas id="equity-chart" height="160"></canvas>
+          <p id="equity-empty" class="empty" hidden>No round trips in this window.</p>
+        </div>
+        <div class="table-head">
+          <h2>Trades</h2>
+          <button type="button" id="download-csv" class="ghost">Download CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="trades">
+            <thead>
+              <tr>
+                <th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th><th>Reason</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-analysis" role="tabpanel" hidden>
+      <form id="analysis-form" class="panel">
+        <label>NSE ticker
+          <input id="ai-symbol" name="symbol" autocomplete="off" placeholder="SBIN" required />
+        </label>
+        <label>Date
+          <input id="ai-date" name="date" type="date" required />
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="run-analysis">Run analysis</button>
+          <p class="hint" id="ai-hint">Runs TradingAgents with Google Gemini in its own environment. A run can take several minutes. <code>.NS</code> is added for you.</p>
+        </div>
+      </form>
+      <p id="analysis-error" class="banner error" hidden></p>
+      <div id="analysis-progress" class="progress" hidden>
+        <div class="progress-head">
+          <span id="analysis-pill" class="pill">queued</span>
+          <span id="analysis-title"></span>
+        </div>
+        <pre id="analysis-log"></pre>
+      </div>
+      <div id="analysis-out" hidden>
+        <p id="stub-banner" class="banner warn" hidden></p>
+        <article class="decision">
+          <p class="eyebrow">Final decision</p>
+          <h2 id="decision-text"></h2>
+          <p id="decision-note"></p>
+        </article>
+        <div id="reports"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

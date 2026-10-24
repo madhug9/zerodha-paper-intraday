@@ -9,21 +9,22 @@ import streamlit as st
 
 from src.backtest import load_config, parse_symbols, run_backtest
 
-st.set_page_config(page_title="GainzAlgo V2 Alpha", page_icon="📈", layout="wide")
+st.set_page_config(page_title="NSE paper backtest", page_icon="📈", layout="wide")
 
 cfg = load_config()
 strat_cfg = cfg.get("strategy", {})
 
-<<<<<<< HEAD
-st.title("NSE ORB paper backtest")
+MODE_LABELS = {
+    "both": "Both (buy then sell, and sell then buy)",
+    "long_only": "Long only (buy then sell)",
+    "short_only": "Short only (sell then buy)",
+}
+
+st.title("NSE paper backtest")
 st.caption(
-    "Intraday long (buy→sell) and/or short (sell→buy). Type NSE symbols. Simulation only — not advice."
-=======
-st.title("GainzAlgo V2 Alpha paper backtest")
-st.caption(
-    "Independent recreation of the published Alpha signal rules for NSE paper trading. "
+    "GainzAlgo V2 Alpha or opening-range breakout, long and short. "
+    "Independent recreation for NSE paper trading. "
     "Simulation only — not the official TradingView product, not live trading, not advice."
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
 )
 
 with st.sidebar:
@@ -32,29 +33,10 @@ with st.sidebar:
     strategy = st.selectbox(
         "Strategy",
         ["gainzalgo", "orb"],
-        index=0,
+        index=0 if str(strat_cfg.get("name", "gainzalgo")) != "orb" else 1,
         format_func=lambda s: "GainzAlgo V2 Alpha" if s == "gainzalgo" else "Opening Range Breakout",
     )
-    lookback = st.slider("Lookback days (5m data max ~59)", 5, 59, 59)
-<<<<<<< HEAD
-    capital = st.number_input("Capital (Rs)", min_value=10_000, max_value=10_000_000, value=int(cfg.get("capital", 200000)), step=10_000)
-    or_mins = st.slider("Opening range (minutes)", 5, 60, int(cfg.get("strategy", {}).get("opening_range_minutes", 15)))
-    target_r = st.slider("Target (R)", 0.5, 3.0, float(cfg.get("strategy", {}).get("target_r", 1.5)), 0.1)
-    mode_label = st.selectbox(
-        "Direction",
-        options=[
-            "Both (buy→sell & sell→buy)",
-            "Long only (buy→sell)",
-            "Short only (sell→buy)",
-        ],
-        index=0,
-    )
-    trade_mode = {
-        "Both (buy→sell & sell→buy)": "both",
-        "Long only (buy→sell)": "long_only",
-        "Short only (sell→buy)": "short_only",
-    }[mode_label]
-=======
+    lookback = st.slider("Lookback days (5m data max ~59)", 5, 59, 30)
     capital = st.number_input(
         "Capital (Rs)",
         min_value=10_000,
@@ -62,9 +44,29 @@ with st.sidebar:
         value=int(cfg.get("capital", 200000)),
         step=10_000,
     )
+    trade_mode = st.selectbox(
+        "Direction",
+        options=list(MODE_LABELS),
+        index=list(MODE_LABELS).index(strat_cfg.get("trade_mode", "both"))
+        if strat_cfg.get("trade_mode", "both") in MODE_LABELS
+        else 0,
+        format_func=lambda key: MODE_LABELS[key],
+    )
     if strategy == "gainzalgo":
-        rrr = st.selectbox("Risk : Reward", ["1:1", "2:3", "1:2", "1:4"], index=2)
-        tp_sl_multi = st.slider("TP/SL multiplier", 1.0, 4.0, float(strat_cfg.get("tp_sl_multiplier", 1.0)), 0.1)
+        rrr_choices = ["1:1", "2:3", "1:2", "1:4"]
+        current_rrr = str(strat_cfg.get("rrr", "1:2"))
+        rrr = st.selectbox(
+            "Risk : Reward",
+            rrr_choices,
+            index=rrr_choices.index(current_rrr) if current_rrr in rrr_choices else 2,
+        )
+        tp_sl_multi = st.slider(
+            "TP/SL multiplier",
+            1.0,
+            4.0,
+            float(strat_cfg.get("tp_sl_multiplier", 1.0)),
+            0.1,
+        )
         allow_shorts = st.checkbox("Allow shorts", value=bool(strat_cfg.get("allow_shorts", True)))
         or_mins = int(strat_cfg.get("opening_range_minutes", 15))
         target_r = float(strat_cfg.get("target_r", 1.5))
@@ -72,12 +74,19 @@ with st.sidebar:
         rrr = None
         tp_sl_multi = None
         allow_shorts = None
-        or_mins = st.slider("Opening range (minutes)", 5, 60, int(strat_cfg.get("opening_range_minutes", 15)))
+        or_mins = st.slider(
+            "Opening range (minutes)",
+            5,
+            60,
+            int(strat_cfg.get("opening_range_minutes", 15)),
+        )
         target_r = st.slider("Target (R)", 0.5, 3.0, float(strat_cfg.get("target_r", 1.5)), 0.1)
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
     st.markdown("---")
-    st.markdown("Uses Zerodha-style MIS cost model from `config.yaml`.")
+    st.markdown("Uses the Zerodha-style MIS cost model from `config.yaml`.")
     st.markdown("Signals confirm on **bar close**; entries fill at the **next bar open**.")
+    st.markdown("Shorts are taken only when direction allows them and, for GainzAlgo, **Allow shorts** is on.")
+
+mode_label = MODE_LABELS.get(trade_mode, trade_mode)
 
 symbols_text = st.text_input(
     "Symbols",
@@ -93,7 +102,11 @@ with col_hint:
     st.write("Examples: `CUPID` · `SBIN,TATASTEEL` · `SILVERBEES,GOLDBEES`")
 
 if run:
-    symbols = parse_symbols(symbols_text)
+    try:
+        symbols = parse_symbols(symbols_text)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
     if not symbols:
         st.error("Enter at least one symbol.")
     else:
@@ -107,13 +120,10 @@ if run:
                     strategy=strategy,
                     opening_range_minutes=or_mins,
                     target_r=float(target_r),
-<<<<<<< HEAD
                     trade_mode=trade_mode,
-=======
                     rrr=rrr,
                     tp_sl_multiplier=tp_sl_multi,
                     allow_shorts=allow_shorts,
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
                     write_log=True,
                 )
             except Exception as exc:  # noqa: BLE001 — show in UI
@@ -172,4 +182,4 @@ if run:
         else:
             st.info("No fills.")
 else:
-    st.info("Enter symbols above and click **Run backtest**.")
+    st.info("Enter symbols above and click **Run backtest**. The local HTML desk is `start-gui.bat`.")
