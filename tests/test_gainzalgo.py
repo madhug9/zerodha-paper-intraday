@@ -223,6 +223,110 @@ def test_orb_backtest_still_trades():
     assert result.round_trips >= 1
 
 
+def test_config_keeps_trade_mode_and_three_entries():
+    cfg = load_config()
+    strat = cfg["strategy"]
+    assert strat["max_entries_per_symbol"] == 3
+    assert strat["trade_mode"] == "both"
+    assert strat["rrr"] == "1:2"
+    assert strat["name"] == "gainzalgo"
+    from src.backtest import _gainzalgo_config
+
+    algo = _gainzalgo_config(strat)
+    assert algo.max_entries_per_symbol == 3
+    assert algo.trade_mode == "both"
+    assert algo.reward_multiple == 2.0
+
+
+def test_trade_mode_blocks_the_other_side():
+    cfg = load_config()
+    bullish = _downtrend_then_bullish_engulf()
+    long_only = run_backtest(
+        ["TST"],
+        cfg,
+        strategy="gainzalgo",
+        trade_mode="long_only",
+        write_log=False,
+        frames={"TST": bullish},
+    )
+    assert long_only.trade_mode == "long_only"
+    assert any(f["reason"] == "gainz_buy" for f in long_only.fills)
+    assert not any(f["reason"] == "gainz_sell" for f in long_only.fills)
+
+    short_only = run_backtest(
+        ["TST"],
+        cfg,
+        strategy="gainzalgo",
+        trade_mode="short_only",
+        allow_shorts=True,
+        write_log=False,
+        frames={"TST": bullish},
+    )
+    assert short_only.round_trips == 0
+    assert not any(f["reason"] == "gainz_buy" for f in short_only.fills)
+
+    bearish = _uptrend_then_bearish_engulf()
+    shorts = run_backtest(
+        ["TST"],
+        cfg,
+        strategy="gainzalgo",
+        trade_mode="short_only",
+        write_log=False,
+        frames={"TST": bearish},
+    )
+    assert any(f["reason"] == "gainz_sell" for f in shorts.fills)
+    assert not any(f["reason"] == "gainz_buy" for f in shorts.fills)
+
+
+def _orb_frame(candles: list[tuple[float, float, float, float]]) -> pd.DataFrame:
+    rows = [(o, h, l, c, 1000) for o, h, l, c in candles]
+    idx = pd.date_range("2026-01-07 09:15", periods=len(rows), freq="5min")
+    return pd.DataFrame(rows, index=idx, columns=["open", "high", "low", "close", "volume"])
+
+
+def test_orb_trade_mode_long_and_short():
+    cfg = load_config()
+    up = _orb_frame(
+        [
+            (100.0, 101.0, 99.0, 100.5),
+            (100.5, 102.0, 100.0, 101.5),
+            (101.5, 103.0, 101.0, 102.5),
+            (102.5, 104.5, 102.4, 104.0),
+            (104.0, 110.0, 103.8, 109.0),
+        ]
+    )
+    down = _orb_frame(
+        [
+            (100.0, 101.0, 99.5, 100.2),
+            (100.2, 101.2, 99.8, 100.4),
+            (100.4, 101.0, 99.6, 100.0),
+            (100.0, 100.8, 99.4, 100.1),
+            (100.1, 100.3, 98.0, 98.5),
+            (98.5, 98.6, 90.0, 91.0),
+        ]
+    )
+    blocked = run_backtest(["ORB"], cfg, strategy="orb", trade_mode="short_only", write_log=False, frames={"ORB": up})
+    assert blocked.round_trips == 0
+    short = run_backtest(["ORB"], cfg, strategy="orb", trade_mode="short_only", write_log=False, frames={"ORB": down})
+    assert short.trade_mode == "short_only"
+    assert short.round_trips >= 1
+    assert any(f["reason"] == "orb_short" for f in short.fills)
+
+
+def test_parse_symbols_is_nse_only():
+    from src.backtest import parse_symbols
+    from src.symbols import to_yahoo_nse
+
+    assert parse_symbols("cupid, sbin.ns") == ["CUPID", "SBIN"]
+    assert to_yahoo_nse("sbin") == "SBIN.NS"
+    try:
+        parse_symbols("AAPL.US")
+    except ValueError as exc:
+        assert "NSE" in str(exc)
+    else:
+        raise AssertionError("non-NSE suffix should be rejected")
+
+
 def test_run_backtest_with_injected_frames():
     df = _downtrend_then_bullish_engulf()
     cfg = load_config()

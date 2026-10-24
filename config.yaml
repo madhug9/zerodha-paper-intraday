@@ -21,12 +21,9 @@ watchlist:
 strategy:
   name: gainzalgo  # gainzalgo | orb
   allow_reentry: true
-<<<<<<< HEAD
   max_entries_per_symbol: 3
-  # both = long (buy→sell) + short (sell→buy); or long_only / short_only
+  # both = long (buy then sell) and short (sell then buy); or long_only / short_only
   trade_mode: both
-=======
-  max_entries_per_symbol: 8
   # GainzAlgo V2 Alpha (published rules recreation)
   rrr: "1:2"
   tp_sl_multiplier: 1.0
@@ -43,7 +40,22 @@ strategy:
   target_r: 1.5
   stop_buffer_pct: 0.05
   min_or_range_pct: 0.35
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
+
+gui:
+  host: 127.0.0.1
+  port: 8765
+
+# TradingAgents lives in its own checkout and venv. The API key stays in that
+# folder's .env (GOOGLE_API_KEY). This file never stores secrets.
+tradingagents:
+  home: 'C:\Users\G Bhuvan\Documents\GitHub\trading'
+  python: ""
+  provider: google
+  deep_think_llm: gemini-2.5-flash
+  quick_think_llm: gemini-2.5-flash
+  max_debate_rounds: 1
+  max_risk_discuss_rounds: 1
+  backend_url: ""
 
 costs:
   # Zerodha equity intraday (MIS) approximation — see brokerage calculator

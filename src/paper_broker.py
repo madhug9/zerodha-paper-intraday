@@ -6,7 +6,7 @@ from typing import Literal
 
 from .costs import CostConfig, apply_slippage, estimate_charges
 
-Side = Literal["BUY", "SELL"]  # position direction: BUY=long, SELL=short
+Side = Literal["BUY", "SELL"]  # BUY = long, SELL = short
 
 
 @dataclass
@@ -25,11 +25,7 @@ class Position:
     symbol: str
     qty: int
     avg_price: float
-<<<<<<< HEAD
-    side: Side  # BUY=long, SELL=short
-=======
-    side: Side  # long = BUY, short = SELL
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
+    side: Side  # BUY = long, SELL = short
     stop: float
     target: float
     entries: int = 1
@@ -37,6 +33,13 @@ class Position:
 
 @dataclass
 class PaperBroker:
+    """Cash-account paper broker for long and short intraday positions.
+
+    ``buy`` / ``sell`` open, add, or close. ``open_long`` / ``open_short`` are
+    the single-entry helpers the opening-range engine uses. ``flat`` closes
+    whichever side is open. No live orders are sent.
+    """
+
     capital: float
     costs: CostConfig
     cash: float = field(init=False)
@@ -59,16 +62,7 @@ class PaperBroker:
             if pos.side == "BUY":
                 value += px * pos.qty
             else:
-<<<<<<< HEAD
-                # Short: cash already includes sale proceeds; subtract repurchase liability
-                value -= px * pos.qty
-        return value
-
-    def open_long(
-        self, symbol: str, qty: int, price: float, time: datetime, stop: float, target: float, reason: str
-    ) -> Fill | None:
-        if qty <= 0 or symbol in self.positions:
-=======
+                # Short: sale proceeds are already in cash; subtract the cover liability.
                 value -= px * pos.qty
         return value
 
@@ -83,7 +77,6 @@ class PaperBroker:
         reason: str,
     ) -> Fill | None:
         if qty <= 0:
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
             return None
         pos = self.positions.get(symbol)
         if pos and pos.side == "SELL":
@@ -109,9 +102,37 @@ class PaperBroker:
             return None
         return self._open_or_add_short(symbol, qty, price, time, stop, target, reason)
 
+    def open_long(
+        self,
+        symbol: str,
+        qty: int,
+        price: float,
+        time: datetime,
+        stop: float,
+        target: float,
+        reason: str,
+    ) -> Fill | None:
+        if qty <= 0 or symbol in self.positions:
+            return None
+        return self._open_or_add_long(symbol, qty, price, time, stop, target, reason)
+
+    def open_short(
+        self,
+        symbol: str,
+        qty: int,
+        price: float,
+        time: datetime,
+        stop: float,
+        target: float,
+        reason: str,
+    ) -> Fill | None:
+        if qty <= 0 or symbol in self.positions:
+            return None
+        return self._open_or_add_short(symbol, qty, price, time, stop, target, reason)
+
     def flat(self, symbol: str, price: float, time: datetime, reason: str) -> Fill | None:
         pos = self.positions.get(symbol)
-        if not pos:
+        if not pos or pos.qty <= 0:
             return None
         if pos.side == "BUY":
             return self._close_long(pos, pos.qty, price, time, reason)
@@ -134,26 +155,20 @@ class PaperBroker:
             return None
         self.cash -= cost
         self.total_charges += charges
-        self.positions[symbol] = Position(symbol, qty, fill_px, "BUY", stop, target, 1)
+        existing = self.positions.get(symbol)
+        if existing:
+            new_qty = existing.qty + qty
+            existing.avg_price = (existing.avg_price * existing.qty + fill_px * qty) / new_qty
+            existing.qty = new_qty
+            existing.entries += 1
+            existing.stop = stop
+            existing.target = target
+        else:
+            self.positions[symbol] = Position(symbol, qty, fill_px, "BUY", stop, target, 1)
         fill = Fill(time, symbol, "BUY", qty, fill_px, charges, reason)
         self.fills.append(fill)
         return fill
 
-<<<<<<< HEAD
-    def open_short(
-        self, symbol: str, qty: int, price: float, time: datetime, stop: float, target: float, reason: str
-    ) -> Fill | None:
-        if qty <= 0 or symbol in self.positions:
-            return None
-        fill_px = apply_slippage("SELL", price, self.costs)
-        charges = estimate_charges("SELL", fill_px, qty, self.costs).total
-        # Require margin-like cash reserve ≈ notional (simple MIS proxy)
-        if fill_px * qty + charges > self.cash:
-            return None
-        self.cash += fill_px * qty - charges
-        self.total_charges += charges
-        self.positions[symbol] = Position(symbol, qty, fill_px, "SELL", stop, target, 1)
-=======
     def _close_long(self, pos: Position, qty: int, price: float, time: datetime, reason: str) -> Fill | None:
         qty = min(qty, pos.qty)
         fill_px = apply_slippage("SELL", price, self.costs)
@@ -181,7 +196,7 @@ class PaperBroker:
     ) -> Fill | None:
         fill_px = apply_slippage("SELL", price, self.costs)
         charges = estimate_charges("SELL", fill_px, qty, self.costs).total
-        # Conservative: require full notional in cash (no extra MIS leverage).
+        # Conservative MIS proxy: require full notional in cash (no extra leverage).
         if fill_px * qty + charges > self.cash:
             return None
         self.cash += fill_px * qty - charges
@@ -196,49 +211,10 @@ class PaperBroker:
             existing.target = target
         else:
             self.positions[symbol] = Position(symbol, qty, fill_px, "SELL", stop, target, 1)
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
         fill = Fill(time, symbol, "SELL", qty, fill_px, charges, reason)
         self.fills.append(fill)
         return fill
 
-<<<<<<< HEAD
-    def flat(self, symbol: str, price: float, time: datetime, reason: str) -> Fill | None:
-        pos = self.positions.get(symbol)
-        if not pos or pos.qty <= 0:
-            return None
-        qty = pos.qty
-        if pos.side == "BUY":
-            fill_px = apply_slippage("SELL", price, self.costs)
-            charges = estimate_charges("SELL", fill_px, qty, self.costs).total
-            proceeds = fill_px * qty - charges
-            self.realized_pnl += (fill_px - pos.avg_price) * qty - charges
-            self.cash += proceeds
-            order_side: Side = "SELL"
-        else:
-            fill_px = apply_slippage("BUY", price, self.costs)
-            charges = estimate_charges("BUY", fill_px, qty, self.costs).total
-            cost = fill_px * qty + charges
-            if cost > self.cash + fill_px * qty:  # allow using short proceeds already in cash
-                pass
-            self.realized_pnl += (pos.avg_price - fill_px) * qty - charges
-            self.cash -= cost
-            order_side = "BUY"
-        self.total_charges += charges
-        del self.positions[symbol]
-        fill = Fill(time, symbol, order_side, qty, fill_px, charges, reason)
-        self.fills.append(fill)
-        return fill
-
-    # Back-compat aliases used by older call sites
-    def buy(self, symbol: str, qty: int, price: float, time: datetime, stop: float, target: float, reason: str) -> Fill | None:
-        return self.open_long(symbol, qty, price, time, stop, target, reason)
-
-    def sell(self, symbol: str, qty: int, price: float, time: datetime, reason: str) -> Fill | None:
-        pos = self.positions.get(symbol)
-        if not pos or pos.side != "BUY":
-            return None
-        return self.flat(symbol, price, time, reason)
-=======
     def _cover_short(self, pos: Position, qty: int, price: float, time: datetime, reason: str) -> Fill | None:
         qty = min(qty, pos.qty)
         fill_px = apply_slippage("BUY", price, self.costs)
@@ -252,4 +228,3 @@ class PaperBroker:
         fill = Fill(time, pos.symbol, "BUY", qty, fill_px, charges, reason)
         self.fills.append(fill)
         return fill
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b

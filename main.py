@@ -37,12 +37,9 @@ def main() -> None:
         cfg,
         lookback_days=args.lookback,
         days=args.days,
-<<<<<<< HEAD
         trade_mode=args.mode,
-=======
         strategy=args.strategy,
         rrr=args.rrr,
->>>>>>> c222e2abe0cb05fb3b3eef0276e0329099b93f6b
         write_log=True,
     )
 
@@ -50,6 +47,7 @@ def main() -> None:
         console.print(f"[yellow]Skipped (no data): {', '.join(result.skipped)}[/yellow]")
 
     console.print(f"[bold]Strategy[/bold]: {result.strategy}")
+    console.print(f"[bold]Trade mode[/bold]: {result.trade_mode}")
     console.print(f"[bold]Symbols[/bold]: {', '.join(result.symbols)}")
     console.print(f"[bold]Range[/bold]: {result.date_start} -> {result.date_end} ({result.sessions} sessions)")
     console.print(f"[bold]Est. RT breakeven[/bold]: ~{result.breakeven_pct * 100:.3f}%")
